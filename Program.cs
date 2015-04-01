@@ -14,6 +14,7 @@ namespace TortoiseSVNStyleCop
             int foundViolatons = 0;
 
             string[] filePaths = File.ReadAllLines(args[0]);
+            filePaths = filePaths.Where(path => Path.GetExtension(path).ToLower() == ".cs").ToArray();
             string projectPath = GetRootPath(filePaths);
             string settingsPath = Path.Combine(System.Reflection.Assembly.GetExecutingAssembly().Location, @"Settings.StyleCop");
             if (File.Exists(settingsPath))
@@ -21,24 +22,7 @@ namespace TortoiseSVNStyleCop
                 settingsPath = null;
             }
             Console.Error.WriteLine("DEBUG: {0}", settingsPath);
-            StyleCopConsole styleCopConsole = new StyleCopConsole(settingsPath, false, null, null, true);
-
-            Configuration configuration = new Configuration(null);
-
-            CodeProject project = new CodeProject(0, projectPath, configuration);
-
-            foreach (string file in filePaths)
-            {
-                var loaded = styleCopConsole.Core.Environment.AddSourceCode(project, file, null);
-            }
-
-            List<Violation> violations = new List<Violation>();
-            styleCopConsole.ViolationEncountered += ((sender, arguments) => violations.Add(arguments.Violation));
-
-            List<string> output = new List<string>();
-            styleCopConsole.OutputGenerated += ((sender, arguments) => output.Add(arguments.Output));
-
-            styleCopConsole.Start(new[] { project }, true);
+            List<Violation> violations = Analyze(filePaths, projectPath, settingsPath);
 
             foreach (string file in filePaths)
             {
@@ -57,29 +41,43 @@ namespace TortoiseSVNStyleCop
             Environment.Exit(foundViolatons);
         }
 
+        private static List<Violation> Analyze(string[] filePaths, string projectPath, string settingsPath)
+        {
+            StyleCopConsole styleCopConsole = new StyleCopConsole(settingsPath, false, null, null, true);
+
+            Configuration configuration = new Configuration(null);
+
+            CodeProject project = new CodeProject(0, projectPath, configuration);
+
+            foreach (string file in filePaths)
+            {
+                var loaded = styleCopConsole.Core.Environment.AddSourceCode(project, file, null);
+            }
+
+            List<Violation> violations = new List<Violation>();
+            styleCopConsole.ViolationEncountered += ((sender, arguments) => violations.Add(arguments.Violation));
+
+            List<string> output = new List<string>();
+            styleCopConsole.OutputGenerated += ((sender, arguments) => output.Add(arguments.Output));
+
+            styleCopConsole.Start(new[] { project }, true);
+            return violations;
+        }
+
         private static string GetRootPath(string[] filePaths)
         {
             if (filePaths.Length > 0)
             {
                 string[] testAgainst = filePaths[0].Split('/');
-                int noOfLevels = testAgainst.Length;
-                foreach (string filePath in filePaths)
-                {
-                    string[] current = filePath.Split('/');
-                    int level;
-                    for (level = 0; level <= Math.Min(noOfLevels, current.Length) - 1; level++)
-                    {
-                        if (testAgainst[level] != current[level])
-                        {
-                            break;
-                        }
-                    }
-                    noOfLevels = Math.Min(noOfLevels, level);
-                }
-
+                int noOfLevels = filePaths.Select(path => EqualLength(testAgainst, path.Split('/'))).Min();
                 return (testAgainst.Take(noOfLevels).Aggregate((m, n) => m + "/" + n));
             }
             return string.Empty;
+        }
+
+        private static int EqualLength(string[] s0, string[] s1)
+        {
+            return s0.Zip(s1, (x, y) => x == y).TakeWhile(x => x).Count();
         }
     }
 }
